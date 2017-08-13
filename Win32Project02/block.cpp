@@ -13,10 +13,9 @@ BlockType BasicBlock::getType()
 {
 	return BlockType::Basic;
 }
-bool BasicBlock::clear()
+void BasicBlock::clear()
 {
 	if (!isCleared) isCleared = true;
-	return isCleared;
 }
 size_t HardBlock::getWidth()
 {
@@ -30,9 +29,8 @@ BlockType HardBlock::getType()
 {
 	return BlockType::Basic;
 }
-bool HardBlock::clear()
+void HardBlock::clear()
 {
 	if (count > 0) --count;
 	if (count == 0) isCleared = true;
-	return isCleared;
 }

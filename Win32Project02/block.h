@@ -8,7 +8,9 @@ enum BlockType
 	Basic,
 	Hard
 };
-
+/**
+ * @brief Base class for block
+ */
 class BlockInterface
 {
 protected:
@@ -16,6 +18,10 @@ protected:
 	int row_pos;
 	bool isCleared = false;
 public:
+	/**
+	 * @brief ブロックの位置を返す関数
+	 * @return POINT ブロックの位置
+	 */
 	POINT getPoint()
 	{
 		return POINT{ col_pos, row_pos };
@@ -23,11 +29,17 @@ public:
 	virtual size_t getWidth() = 0;
 	virtual size_t getHeight() = 0;
 	virtual BlockType getType() = 0;
-	virtual bool clear() = 0;
+	/*! ブロックがボールと衝突したときに呼び出す関数 */
+	virtual void clear() = 0;
 	bool hasCleared()
 	{
 		return isCleared;
 	}
+	/**
+	 * @brief 衝突判定関数
+	 * @param ball_position ボールの位置
+	 * @return 衝突していたらtrue
+	 */
 	bool isHashed(const lpPosition& ball_position)
 	{
 		bool isInsideX = ball_position->x > col_pos && ball_position->x < col_pos + getWidth() - BALL_SIZE;
@@ -37,6 +49,10 @@ public:
 	}
 };
 
+
+/**
+* @brief Basic block
+*/
 class BasicBlock : public BlockInterface
 {
 public:
@@ -51,9 +67,12 @@ public:
 	size_t getWidth();
 	size_t getHeight();
 	BlockType getType();
-	bool clear();
+	void clear();
 };
 
+/**
+* @brief Hard block
+*/
 class HardBlock : public BlockInterface
 {
 private:
@@ -70,7 +89,7 @@ public:
 	size_t getWidth();
 	size_t getHeight();
 	BlockType getType();
-	bool clear();
+	void clear();
 };
 
 static class BlockFactory

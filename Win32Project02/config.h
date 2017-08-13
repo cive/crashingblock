@@ -10,7 +10,7 @@
 #define BLOCK_X_OFFSET GAMEPANE_X_OFFSET + 16
 #define BLOCK_Y_OFFSET GAMEPANE_Y_OFFSET + 16
 
-
+/*! ゲームステージ, まだ一面のみ */
 enum BasicStage
 {
 	one
