@@ -7,17 +7,23 @@
 #include <wingdi.h>
 #include <memory>
 #include <vector>
+#include <string>
+#include <algorithm>
 #include "config.h"
 #include "block.h"
 #include "ball.h"
 
 #pragma comment(lib, "msimg32.lib")
 
+// ---- Define    ----
+#define TM_GAME_NOW 1
+
 // ---- Parameter ----
 
 // ---- Prototype ----
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 static VOID setClientSize(HWND, LONG, LONG);
+const HFONT createFontStandard(const WCHAR*, int, int);
 class BlockInterface;
 class BasicBlock;
 class HardBlock;
@@ -86,7 +92,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
 
 /**
 * @brief ウィンドウプロシージャ
-* @param hwnd ウィンドウハンドル
+* @param hWnd ウィンドウハンドル
 * @param uMsg メッセージの識別子
 * @param wParam メッセージの最初のパラメータ
 * @param lParam メッセージの2番目のパラメータ
@@ -103,7 +109,6 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	static HBITMAP hBackground;
 	static HBITMAP hBall;
 	static HBITMAP hBar;
-	static HBITMAP hPrevBitmap;
 	static std::vector<HBITMAP> hBlocks;
 
 	// const value
@@ -117,19 +122,24 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	// press space bar, then game start.
 	static BOOL isStartGame = FALSE;
 
+	// If the value is true, game is paused
+	static BOOL isPaused = FALSE;
+
+	// The remaining lives
+	static int nRemain;
+	static BOOL isGameover = FALSE;
+
 	// position and velocity
 	static lpPosition ball_position = lpPosition(new Position());
 	static lpVelocity ball_velocity = lpVelocity(new Velocity());
 	static lpPosition bar_position  = lpPosition(new Position());
 
 	// stage
-	static int nClear = 0;
+	static int nStageClear = 0;
 
 	// Blocks
 	static std::vector<BlockInterface*> vecBlocks;
 
-	UINT BMP_W; // bitmap width
-	UINT BMP_H; // bitmap height
 	switch (uMsg)
 	{
 	case WM_DESTROY:
@@ -175,6 +185,7 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		hBar        = (HBITMAP)::LoadImage(NULL, TEXT(".\\img\\bar.bmp"),        IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
 		hBlocks.push_back((HBITMAP)::LoadImage(NULL, TEXT(".\\img\\BasicBlock.bmp"), IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE));
 		////// Initial value //////
+		nRemain = 5;
 		ball_position->x = 104;
 		ball_position->y = 200;
 		ball_velocity->x = 2;
@@ -195,50 +206,126 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	case WM_TIMER:
 	// ---- Procedure ----
 	{
-		////// ボール: 壁の判定 //////
-		Position tmp_pos{ ball_position->x, ball_position->y };
-		tmp_pos.x += ball_velocity->x;
-		if (tmp_pos.x < GAMEPANE_X_OFFSET || tmp_pos.x > GAMEPANE_X_OFFSET + GAMEPANE_WIDTH)
+		switch (wParam)
 		{
-			ball_velocity->x = -ball_velocity->x;
-		}
-		tmp_pos.y += ball_velocity->y;
-		if (tmp_pos.y < GAMEPANE_Y_OFFSET || tmp_pos.y > GAMEPANE_Y_OFFSET + GAMEPANE_HEIGHT)
+		case TM_GAME_NOW:
 		{
-			ball_velocity->y = -ball_velocity->y;
-		}
-		////// ボール: バーの判定 //////
-		if (tmp_pos.y + kstBallSize > bar_position->y && tmp_pos.x > bar_position->x && tmp_pos.x < bar_position->x + ksizeBar.cx)
-		{
-			ball_velocity->y = -ball_velocity->y;
-		}
-		::InvalidateRect(hWnd, NULL, TRUE);
-		////// ボール: ブロックの判定 //////
-		bool isHashed = false;
-		for each (auto& block in vecBlocks)
-		{
-			if (!block->hasCleared() && block->isHashed(ball_position))
+			////// ボール: 壁の判定 //////
+			Position tmp_pos{ ball_position->x, ball_position->y };
+			tmp_pos.x += ball_velocity->x;
+			if (tmp_pos.x < GAMEPANE_X_OFFSET || tmp_pos.x > GAMEPANE_X_OFFSET + GAMEPANE_WIDTH)
 			{
-				isHashed = true;
-				block->clear();
+				ball_velocity->x = -ball_velocity->x;
 			}
+			tmp_pos.y += ball_velocity->y;
+			if (tmp_pos.y < GAMEPANE_Y_OFFSET)
+			{
+				ball_velocity->y = -ball_velocity->y;
+			}
+			////// ボール: バーの判定 //////
+			if (tmp_pos.y + kstBallSize > bar_position->y && bar_position->y + ksizeBar.cy > tmp_pos.y + kstBallSize &&
+				tmp_pos.x > bar_position->x && tmp_pos.x < bar_position->x + ksizeBar.cx)
+			{
+				ball_velocity->y = -ball_velocity->y;
+			}
+			////// ボール: ブロックの判定 //////
+			bool isHashed = false;
+			for each (auto& block in vecBlocks)
+			{
+				if (!block->hasCleared() && block->isHashed(tmp_pos))
+				{
+					isHashed = true;
+					block->clear();
+				}
+			}
+			// ブロックの削除
+			for (auto it = vecBlocks.begin(); it != vecBlocks.end(); )
+			{
+				if ((*it)->hasCleared())
+				{
+					delete *it;
+					it = vecBlocks.erase(it);
+				}
+				else
+				{
+					++it;
+				}
+			}
+			// 二つ同時にぶつかることも考慮する
+			if (isHashed)
+			{
+				ball_velocity->x = -ball_velocity->y;
+				ball_velocity->y = ball_velocity->x;
+			}
+			if (vecBlocks.size() == 0)
+			{
+				isPaused = TRUE;
+				nRemain++;
+				nStageClear++;
+				// TODO: 共通処理をまとめるべき
+				ball_position->x = 104;
+				ball_position->y = 200;
+				ball_velocity->x = 2;
+				ball_velocity->y = 2;
+				KillTimer(hWnd, TM_GAME_NOW);
+
+			}
+			////// ボールの移動 //////
+			ball_position->x += ball_velocity->x;
+			ball_position->y += ball_velocity->y;
+			////// ボールが場外へ //////
+			if (ball_position->y > 550)
+			{
+				isPaused = TRUE;
+				if (nRemain == 0)
+				{
+					isGameover = TRUE;
+				}
+				KillTimer(hWnd, TM_GAME_NOW);
+			}
+			break;
 		}
-		// 二つ同時にぶつかることも考慮する
-		if (isHashed)
-		{
-			ball_velocity->x = -ball_velocity->y;
-			ball_velocity->y = ball_velocity->x;
+		default:
+			break;
 		}
-		////// ボールの移動 //////
-		ball_position->x += ball_velocity->x;
-		ball_position->y += ball_velocity->y;
+		////// 再描画 //////
+		::InvalidateRect(hWnd, NULL, TRUE);
 		return 0;
 	}
 	case WM_ERASEBKGND:
 		return 1;
 	case WM_KEYDOWN:
 	{
-		if (wParam == VK_SPACE && !isStartGame && nClear == 0)
+		////// 球が落ちてしまった時: スペースキーで復活 ///////
+		if (wParam == VK_SPACE && isPaused && !isGameover)
+		{
+			// TODO: 共通処理をまとめるべき
+			ball_position->x = 104;
+			ball_position->y = 200;
+			ball_velocity->x = 2;
+			ball_velocity->y = 2;
+
+			isPaused = FALSE;
+			--nRemain;
+			SetTimer(hWnd, TM_GAME_NOW, 1, NULL);
+			return 0;
+		}
+		////// ゲームオーバーになってしまった時: Escキーで最初からやり直し //////
+		if (wParam == VK_ESCAPE && isGameover)
+		{
+			// TODO: 共通処理をまとめるべき
+			ball_position->x = 104;
+			ball_position->y = 200;
+			ball_velocity->x = 2;
+			ball_velocity->y = 2;
+
+			isGameover = FALSE;
+			isPaused = FALSE;
+			nStageClear = 0;
+		}
+
+
+		if (wParam == VK_SPACE && !isStartGame && nStageClear == BasicStage::one)
 		{
 			////// Timer setting ///////
 			isStartGame = TRUE;
@@ -250,15 +337,17 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 					vecBlocks.push_back(block);
 				}
 			}
-			::SetTimer(hWnd, 1, 1, NULL);
+			SetTimer(hWnd, TM_GAME_NOW, 1, NULL);
 		}
 		return 0;
 	}
 	case WM_PAINT:
 		HDC hdc = BeginPaint(hWnd, &ps);
+		HBITMAP hPrevBitmap;
 		// メモリデバイスコンテキストを作成する
 		HDC hBuffer = CreateCompatibleDC(hdc);
-		// ロードしたビットマップを選択する
+		UINT BMP_W; // bitmap width
+		UINT BMP_H; // bitmap height
 
 		////// 背景画像 //////
 		hPrevBitmap = (HBITMAP)SelectObject(hBuffer, hBackground);
@@ -286,7 +375,7 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		{
 			for each (auto& block in vecBlocks)
 			{
-				if (!block->hasCleared())
+				if (!block->hasCleared()) 
 				{
 					hPrevBitmap = (HBITMAP)SelectObject(hBuffer, hBlocks.at(block->getType()));
 					GetObject(hBlocks[block->getType()], sizeof(BITMAP), &bmp);
@@ -297,6 +386,44 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 				}
 			}
 		}
+		////// 文字の表示 //////
+		HFONT hFont, hPrevFont;
+		const WCHAR* font_name     = L"Meiryo UI";
+		const WCHAR* plsPressSpace = L"Space key, game start";
+		const size_t kstPlsPressSpaceX = 400;
+		const size_t kstPlsPressSpaceY =  20;
+		const WCHAR* kwcLife = L"LIFE: ";
+		const size_t kstLifeX = 400;
+		const size_t kstLifeY = 60;
+		const WCHAR* kwcStageClear = L"SAGE CLEAR!!!";
+		const size_t kstStageClearX = 400;
+		const size_t kstStageClearY = 300;
+		hFont = createFontStandard(font_name, 22, FW_REGULAR);
+		hPrevFont = (HFONT)SelectObject(hMemDC, hFont);
+		SetTextColor(hMemDC, RGB(10, 10, 10));
+
+		// for debug...
+		// std::wstring wstrForDebug;
+		// const size_t kstForDebugX = 400;
+		// const size_t kstForDebugY = 400;
+		// wstrForDebug.append(std::to_wstring(ball_position->x)).append(L" ,").append(std::to_wstring(ball_position->y));
+		/// for debug...
+
+		if (isPaused || !isStartGame)
+		{
+			TextOut(hMemDC, kstPlsPressSpaceX, kstPlsPressSpaceY, plsPressSpace, wcslen(plsPressSpace));
+		}
+		TextOut(hMemDC, kstLifeX,          kstLifeY,          kwcLife,       wcslen(kwcLife));
+		TextOut(hMemDC, kstLifeX+100,      kstLifeY,          (LPCWSTR)std::to_wstring(nRemain).c_str(), 1);
+		if (vecBlocks.size() == 0 && isPaused)
+		{
+			TextOut(hMemDC, kstStageClearX, kstStageClearY, kwcStageClear, wcslen(kwcStageClear));
+		}
+		// for debug...
+		// TextOut(hMemDC, kstForDebugX, kstForDebugY, (LPCWSTR)wstrForDebug.c_str(), wstrForDebug.size());
+		// for debug...
+		SelectObject(hMemDC, hPrevFont);
+		DeleteObject(hFont);
 
 		BitBlt(hdc, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, hMemDC, 0, 0, SRCCOPY);
 		DeleteDC(hBuffer);
@@ -307,6 +434,12 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	return ::DefWindowProc(hWnd, uMsg, wParam, lParam);
 }
 
+/**
+ * @brief ウィンドウのサイズをリサイズする関数
+ * @param hWnd ウィンドウハンドル
+ * @param width 幅
+ * @param height 高さ
+ */
 static VOID setClientSize(HWND hWnd, LONG width, LONG height)
 {
 	RECT rc1;
@@ -317,4 +450,15 @@ static VOID setClientSize(HWND hWnd, LONG width, LONG height)
 	width += ((rc1.right - rc1.left) - (rc2.right - rc2.left));
 	height += ((rc1.bottom - rc1.top) - (rc2.bottom - rc2.top));
 	SetWindowPos(hWnd, NULL, 0, 0, width, height, (SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOMOVE));
+}
+
+/**
+ * @brief 簡易的にFontを設定する
+ * @param name 書体名
+ * @param size 大きさ
+ * @param weight 太さ
+ */
+const HFONT createFontStandard(const WCHAR* name, int size, int weight)
+{
+	return (HFONT)CreateFont(size, 0, 0, 0, weight, FALSE, FALSE, FALSE, SHIFTJIS_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, PROOF_QUALITY, FIXED_PITCH | FF_MODERN, (LPCWSTR)name);
 }

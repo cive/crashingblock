@@ -8,6 +8,7 @@ enum BlockType
 	Basic,
 	Hard
 };
+
 /**
  * @brief Base class for block
  */
@@ -40,10 +41,10 @@ public:
 	 * @param ball_position ƒ{[ƒ‹‚ÌˆÊ’u
 	 * @return Õ“Ë‚µ‚Ä‚¢‚½‚çtrue
 	 */
-	bool isHashed(const lpPosition& ball_position)
+	bool isHashed(const Position& ball_position)
 	{
-		bool isInsideX = ball_position->x > col_pos && ball_position->x < col_pos + getWidth() - BALL_SIZE;
-		bool isInsideY = ball_position->y + BALL_SIZE > row_pos && ball_position->y < row_pos + getHeight();
+		bool isInsideX = ball_position.x > col_pos && ball_position.x < col_pos + getWidth() - BALL_SIZE;
+		bool isInsideY = ball_position.y + BALL_SIZE > row_pos && ball_position.y < row_pos + getHeight();
 		if (isInsideX && isInsideY) return true;
 		return false;
 	}
